@@ -1,0 +1,39 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: centos-7
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Docker
+      uses: actions/setup-docker@v2
+
+    - name: Build and push Docker image
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      run: |
+        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+        docker buildx create --use
+        docker buildx build --platform linux/amd64,linux/arm64 -t whaleal/whaleal-lwltest .
+        docker push whaleal/whaleal-ops
+
+    - name: SSH and deploy to server
+      uses: appleboy/ssh-action@v2
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USERNAME }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script: |
+          docker stop ops-container || true
+          docker rm ops-container || true
+          docker pull whaleal/whaleal-ops:latest
+          docker run -d --name your-container-name -p 8080:8080 whaleal/whaleal-ops:latest
